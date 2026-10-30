@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}月報表｜LifeFlow{% endblock %}
+
+{% block content %}
+    <section class="page-head">
+        <div>
+            <h2 class="page-title">月報表</h2>
+            <p class="muted">{{ label }}　共 {{ records }} 筆收支紀錄</p>
+        </div>
+        <div class="head-actions">
+            <button type="button" class="btn-ghost" id="print-report">列印報表</button>
+            <a class="button-link" href="{{ url_for('report_export', month=month) }}">匯出報表 CSV</a>
+            <a class="button-link" href="{{ url_for('export', month=month) }}">匯出明細 CSV</a>
+        </div>
+    </section>
+
+    <div class="banner banner-info">{{ advice }}</div>
+
+    <section class="stats">
+        <div class="stat-card">
+            <span class="stat-label">總收入</span>
+            <strong class="stat-value income">{{ "{:,.2f}".format(income) }}<small> 元</small></strong>
+            <span class="diff {{ 'up' if diff.income >= 0 else 'down' }}">
+                較上月 {{ "{:+,.2f}".format(diff.income) }} 元
+            </span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">總支出</span>
+            <strong class="stat-value spending">{{ "{:,.2f}".format(spending) }}<small> 元</small></strong>
+            <span class="diff {{ 'down' if diff.spending > 0 else 'up' }}">
+                較上月 {{ "{:+,.2f}".format(diff.spending) }} 元
+            </span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">結餘</span>
+            <strong class="stat-value {{ 'negative' if balance < 0 else '' }}">{{ "{:,.2f}".format(balance) }}<small> 元</small></strong>
+            <span class="diff {{ 'up' if diff.balance >= 0 else 'down' }}">
+                較上月 {{ "{:+,.2f}".format(diff.balance) }} 元
+            </span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">預算使用率</span>
+            <strong class="stat-value {{ 'spending' if over_budget else '' }}">
+                {% if budget > 0 %}{{ usage }}<small>%</small>{% else %}未設定{% endif %}
+            </strong>
+            <span class="diff">預算 {{ "{:,.2f}".format(budget) }} 元</span>
+        </div>
+    </section>
+
+    <div class="columns">
+        <div class="column">
+            <section class="card">
+                <div class="card-head">
+                    <h2>支出分類佔比</h2>
+                    <span class="muted">{{ label }}</span>
+                </div>
+                <div class="chart-box chart-square">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </section>
+        </div>
+        <div class="column">
+            <section class="card">
+                <div class="card-head">
+                    <h2>近六個月收支</h2>
+                    <span class="muted">{{ shift_month(month, -5) }} ～ {{ month }}</span>
+                </div>
+                <div class="chart-box chart-square">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="columns">
+        <div class="column">
+            <section class="card">
+                <div class="card-head">
+                    <h2>分類明細</h2>
+                    <span class="muted">占本月支出比例</span>
+                </div>
+
+                {% if breakdown %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>分類</th>
+                            <th class="num">金額</th>
+                            <th class="num">筆數</th>
+                            <th class="num">占比</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in breakdown %}
+                        <tr>
+                            <td>{{ row.category }}</td>
+                            <td class="num">{{ "{:,.2f}".format(row.total) }}</td>
+                            <td class="num">{{ row.count }}</td>
+                            <td class="num">
+                                <span class="share">
+                                    <span class="share-bar" style="width: {{ row.share }}%"></span>
+                                </span>
+                                {{ row.share }}%
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty">本月尚無支出資料。</p>
+                {% endif %}
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>收入來源</h2>
+                </div>
+
+                {% if top_income %}
+                <ul class="bars">
+                    {% for row in top_income %}
+                    <li>
+                        <div class="bar-head">
+                            <span>{{ row.category }}</span>
+                            <span class="muted">{{ "{:,.2f}".format(row.total) }} 元</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="empty">本月尚無收入資料。</p>
+                {% endif %}
+            </section>
+        </div>
+
+        <div class="column">
+            <section class="card">
+                <div class="card-head">
+                    <h2>前五大支出</h2>
+                </div>
+
+                {% if top_expenses %}
+                <ul class="list">
+                    {% for item in top_expenses %}
+                    <li>
+                        <div class="list-main">
+                            <span>{{ item.category }}</span>
+                            <span class="muted">{{ item.record_date }}{% if item.note %}　{{ item.note }}{% endif %}</span>
+                        </div>
+                        <strong class="spending">{{ "{:,.2f}".format(item.amount) }} 元</strong>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="empty">本月尚無支出資料。</p>
+                {% endif %}
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>待辦與上月比較</h2>
+                </div>
+
+                <ul class="list">
+                    <li>
+                        <div class="list-main">
+                            <span>待辦完成</span>
+                            <span class="muted">目前累計</span>
+                        </div>
+                        <strong>{{ task_stats.done }} 項</strong>
+                    </li>
+                    <li>
+                        <div class="list-main">
+                            <span>待辦未完成</span>
+                            <span class="muted">含逾期 {{ overdue|length }} 項</span>
+                        </div>
+                        <strong>{{ task_stats.pending }} 項</strong>
+                    </li>
+                    <li>
+                        <div class="list-main">
+                            <span>{{ previous.label }}支出</span>
+                            <span class="muted">上個月</span>
+                        </div>
+                        <strong>{{ "{:,.2f}".format(previous.spending) }} 元</strong>
+                    </li>
+                    <li>
+                        <div class="list-main">
+                            <span>{{ previous.label }}結餘</span>
+                            <span class="muted">上個月</span>
+                        </div>
+                        <strong>{{ "{:,.2f}".format(previous.balance) }} 元</strong>
+                    </li>
+                </ul>
+            </section>
+        </div>
+    </div>
+{% endblock %}
+
+{% block data %}
+<script>
+window.LIFEFLOW_REPORT = {{ report_chart|tojson }};
+</script>
+{% endblock %}

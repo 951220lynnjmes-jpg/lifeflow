@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}儀表板｜LifeFlow{% endblock %}
+
+{% block content %}
+    {% if over_budget %}
+    <div class="banner banner-danger">
+        預算超額提醒：本月支出 {{ "{:,.2f}".format(spending) }} 元，已超過預算 {{ "{:,.2f}".format(budget) }} 元。
+    </div>
+    {% endif %}
+
+    {% if overdue %}
+    <div class="banner banner-warn">
+        到期提醒：有 {{ overdue|length }} 項待辦事項已逾期（{{ overdue[0].title }}{% if overdue|length > 1 %} 等{% endif %}）。
+    </div>
+    {% elif due_today %}
+    <div class="banner banner-info">
+        今日提醒：有 {{ due_today|length }} 項待辦事項今天到期。
+    </div>
+    {% endif %}
+
+    <section class="stats">
+        <div class="stat-card">
+            <span class="stat-label">本月總收入</span>
+            <strong class="stat-value income">{{ "{:,.2f}".format(income) }}<small> 元</small></strong>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">本月總支出</span>
+            <strong class="stat-value spending">{{ "{:,.2f}".format(spending) }}<small> 元</small></strong>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">本月結餘</span>
+            <strong class="stat-value {{ 'negative' if balance < 0 else 'balance' }}">{{ "{:,.2f}".format(balance) }}<small> 元</small></strong>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">未完成待辦</span>
+            <strong class="stat-value">{{ pending|length }}<small> 項</small></strong>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>每月預算（{{ label }}）</h2>
+            <a class="link" href="{{ url_for('report', month=month) }}">查看完整月報表</a>
+        </div>
+
+        <div class="progress">
+            <div class="progress-bar {{ 'over' if over_budget else '' }}" style="width: {{ [usage, 100]|min }}%"></div>
+        </div>
+        <p class="muted progress-text">
+            {% if budget > 0 %}
+                已使用 {{ usage }}%{% if over_budget %}，超出預算 {{ "{:,.2f}".format(spending - budget) }} 元{% else %}，剩餘 {{ "{:,.2f}".format(remaining_budget) }} 元{% endif %}
+            {% else %}
+                尚未設定預算，設定後系統會自動計算使用率並在超額時提醒。
+            {% endif %}
+        </p>
+
+        <form class="inline-form" action="{{ url_for('set_budget') }}" method="POST">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="number" name="budget" min="0" step="0.01" value="{{ budget if budget > 0 else '' }}" placeholder="設定每月預算" required>
+            <button type="submit">儲存預算</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>每日支出趨勢</h2>
+            <span class="muted">{{ label }}　支出合計 {{ "{:,.2f}".format(spending) }} 元</span>
+        </div>
+        <div class="chart-box chart-line">
+            <canvas id="dailyChart"></canvas>
+        </div>
+    </section>
+
+    <div class="columns">
+        <div class="column">
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>新增收支紀錄</h2>
+                </div>
+                <form class="record-form" action="{{ url_for('add_expense') }}" method="POST">
+                    <input type="hidden" name="month" value="{{ month }}">
+
+                    <div class="field">
+                        <label for="kind">類型</label>
+                        <select id="kind" name="kind">
+                            <option value="支出">支出</option>
+                            <option value="收入">收入</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="category">分類</label>
+                        <input type="text" id="category" name="category" maxlength="20" list="category-list" placeholder="例如：飲食" required>
+                        <datalist id="category-list">
+                            <option value="飲食"></option>
+                            <option value="交通"></option>
+                            <option value="購物"></option>
+                            <option value="娛樂"></option>
+                            <option value="房租"></option>
+                            <option value="學費"></option>
+                            <option value="打工收入"></option>
+                            <option value="生活費"></option>
+                        </datalist>
+                    </div>
+
+                    <div class="field">
+                        <label for="amount">金額</label>
+                        <input type="number" id="amount" name="amount" min="0.01" step="0.01" placeholder="0.00" required>
+                    </div>
+
+                    <div class="field">
+                        <label for="record_date">日期</label>
+                        <input type="date" id="record_date" name="record_date" value="{{ today }}" required>
+                    </div>
+
+                    <div class="field grow">
+                        <label for="note">備註</label>
+                        <input type="text" id="note" name="note" maxlength="100" placeholder="選填">
+                    </div>
+
+                    <div class="field submit-field">
+                        <button type="submit">新增紀錄</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>收支紀錄</h2>
+                    <a class="link" href="{{ url_for('export', month=month) }}">下載本月 CSV</a>
+                </div>
+
+                {% if expenses %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>類型</th>
+                            <th>分類</th>
+                            <th>備註</th>
+                            <th class="num">金額</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for item in expenses %}
+                        <tr>
+                            <td class="nowrap">{{ item.record_date }}</td>
+                            <td><span class="tag {{ 'tag-income' if item.kind == '收入' else 'tag-spending' }}">{{ item.kind }}</span></td>
+                            <td>{{ item.category }}</td>
+                            <td class="muted">{{ item.note or '—' }}</td>
+                            <td class="num {{ 'income' if item.kind == '收入' else '' }}">{{ "{:,.2f}".format(item.amount) }}</td>
+                            <td class="num">
+                                <form action="{{ url_for('delete_expense', expense_id=item.id) }}" method="POST" class="delete-form">
+                                    <input type="hidden" name="month" value="{{ month }}">
+                                    <button type="submit" class="btn-ghost" data-confirm="確定要刪除這筆紀錄嗎？">刪除</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty">這個月份還沒有收支紀錄。</p>
+                {% endif %}
+            </section>
+
+        </div>
+
+        <div class="column">
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>新增待辦事項</h2>
+                </div>
+                <form class="task-form" action="{{ url_for('add_task') }}" method="POST">
+                    <input type="hidden" name="month" value="{{ month }}">
+                    <input type="text" name="title" maxlength="60" placeholder="輸入待辦事項，例如：繳交網路費" required>
+                    <input type="date" name="due_date">
+                    <button type="submit">新增</button>
+                </form>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>我的待辦清單</h2>
+                    <div class="head-actions">
+                        <span class="muted">未完成 {{ pending|length }} 項</span>
+                        <button type="button" class="btn-ghost" id="enable-notify">開啟提醒</button>
+                    </div>
+                </div>
+
+                {% if tasks %}
+                <ul class="task-list">
+                    {% for task in tasks %}
+                    <li class="task {{ 'done' if task.done else '' }}">
+                        <div class="task-main">
+                            <span class="task-title">{{ task.title }}</span>
+                            <span class="task-meta">
+                                {% if task.due_date %}
+                                    {% if not task.done and task.due_date < today %}
+                                    <span class="tag tag-overdue">逾期 {{ task.due_date }}</span>
+                                    {% elif not task.done and task.due_date == today %}
+                                    <span class="tag tag-today">今日到期</span>
+                                    {% else %}
+                                    到期日 {{ task.due_date }}
+                                    {% endif %}
+                                {% else %}
+                                    未設定到期日
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        <div class="task-actions">
+                            <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="POST">
+                                <input type="hidden" name="month" value="{{ month }}">
+                                <button type="submit" class="btn-ghost">{{ '取消完成' if task.done else '完成' }}</button>
+                            </form>
+                            <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST">
+                                <input type="hidden" name="month" value="{{ month }}">
+                                <button type="submit" class="btn-ghost danger" data-confirm="確定要刪除這項待辦事項嗎？">刪除</button>
+                            </form>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="empty">目前沒有待辦事項。</p>
+                {% endif %}
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <h2>本月支出分類</h2>
+                    <a class="link" href="{{ url_for('export') }}">匯出全部 CSV</a>
+                </div>
+
+                {% if categories %}
+                <ul class="bars">
+                    {% for row in categories %}
+                    <li>
+                        <div class="bar-head">
+                            <span>{{ row.category }}</span>
+                            <span class="muted">{{ "{:,.2f}".format(row.total) }} 元</span>
+                        </div>
+                        <div class="bar">
+                            <div class="bar-fill" style="width: {{ (row.total / category_max * 100) if category_max else 0 }}%"></div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="empty">本月尚無支出資料。</p>
+                {% endif %}
+            </section>
+
+        </div>
+    </div>
+{% endblock %}
+
+{% block data %}
+<script>
+window.LIFEFLOW_DAILY = {{ daily_chart|tojson }};
+</script>
+{% endblock %}

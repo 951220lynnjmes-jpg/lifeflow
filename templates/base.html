@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}LifeFlow 智慧生活管理系統{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="page">
+
+    <header class="topbar">
+        <a class="brand" href="{{ url_for('index', month=month) }}">
+            <span class="logo">LF</span>
+            <span class="brand-text">
+                <strong>LifeFlow</strong>
+                <small>智慧生活管理與自動化系統</small>
+            </span>
+        </a>
+
+        <nav class="nav">
+            <a class="{{ 'is-active' if active == 'index' else '' }}" href="{{ url_for('index', month=month) }}">儀表板</a>
+            <a class="{{ 'is-active' if active == 'report' else '' }}" href="{{ url_for('report', month=month) }}">月報表</a>
+        </nav>
+
+        <form class="month-form" method="GET" action="{{ url_for(request.endpoint) }}">
+            <label for="month">查詢月份</label>
+            <input type="month" id="month" name="month" value="{{ month }}">
+            <button type="submit">查詢</button>
+        </form>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-area">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer muted">
+        LifeFlow 教學原型｜本機開發使用，尚未加入會員登入與權限驗證，請勿直接公開部署。
+    </footer>
+
+</div>
+
+{% block data %}{% endblock %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
